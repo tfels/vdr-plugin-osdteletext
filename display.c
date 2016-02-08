@@ -106,6 +106,7 @@ cDisplay2BPP::cDisplay2BPP(int x0, int y0, int width, int height)
         return;
     }   
     osd->SetAreas(Areas, sizeof(Areas) / sizeof(tArea));
+    bm = new cBitmap(width, height, 2);
     
     InitPalette();
     
@@ -114,7 +115,7 @@ cDisplay2BPP::cDisplay2BPP(int x0, int y0, int width, int height)
     CleanDisplay();
 }
 
-tColor cDisplay2BPP::GetColorRGB(enumTeletextColor ttc, int Area) {
+tColor cDisplay2BPP::GetColorRGB(enumTeletextColor ttc) {
     switch (ttc) {
     case ttcBlack:       return Background;
     case ttcRed:         return clrRed;
@@ -129,7 +130,7 @@ tColor cDisplay2BPP::GetColorRGB(enumTeletextColor ttc, int Area) {
     }
 }
 
-tColor cDisplay2BPP::GetColorRGBAlternate(enumTeletextColor ttc, int Area) {
+tColor cDisplay2BPP::GetColorRGBAlternate(enumTeletextColor ttc) {
     switch (ttc) {
     case ttcBlack:       return clrCyan;
     case ttcRed:         return clrYellow;
@@ -164,7 +165,8 @@ cDisplay4BPP::cDisplay4BPP(int x0, int y0, int width, int height)
         return;
     }   
     osd->SetAreas(Areas, sizeof(Areas) / sizeof(tArea));
-    
+    bm = new cBitmap(width, height, 4);
+
     InitPalette();
 
     InitScaler();
@@ -177,6 +179,7 @@ cDisplay4BPPHalf::cDisplay4BPPHalf(int x0, int y0, int width, int height, bool u
     : cDisplay(width,height), Upper(upper), OsdX0(x0), OsdY0(y0)
 {   
     osd=NULL;
+    bm=NULL;
     
     // Redirect all real init work to method
     InitOSD();
@@ -184,6 +187,7 @@ cDisplay4BPPHalf::cDisplay4BPPHalf(int x0, int y0, int width, int height, bool u
 
 void cDisplay4BPPHalf::InitOSD() {
     delete osd;
+    delete bm;
     osd = cOsdProvider::NewOsd(OsdX0, OsdY0);
     if (!osd) return;
    
@@ -217,6 +221,7 @@ void cDisplay4BPPHalf::InitOSD() {
     }
 
     osd->SetAreas(Areas, sizeof(Areas) / sizeof(tArea));
+    bm = new cBitmap(width, Height, 4);
 
     InitPalette();
 

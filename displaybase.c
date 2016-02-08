@@ -30,6 +30,7 @@ cDisplay::cDisplay(int width, int height)
 
 cDisplay::~cDisplay() {
     DELETENULL(osd);
+    DELETENULL(bm);
 }
 
 void cDisplay::InitScaler() {
@@ -59,27 +60,21 @@ void cDisplay::InitScaler() {
 }
 
 void cDisplay::InitPalette() {
-    cBitmap *bm;
     if (!osd) return;
 
-    int Area=0;
-    while ((bm=osd->GetBitmap(Area))) {
-        enumTeletextColor c;
+    enumTeletextColor c;
         
-        bm->Reset(); 
-        // reset palette
+    bm->Reset();
+    // reset palette
         
-        for (c=ttcFirst;c<=ttcLast;c++) bm->Index(GetColorRGB(c,Area));
-        // Announce all palette colors in defined order
+    for (c=ttcFirst;c<=ttcLast;c++) bm->Index(GetColorRGB(c));
+    // Announce all palette colors in defined order
         
-        int x1,y1,x2,y2;
-        if (!bm->Dirty(x1,y1,x2,y2)) {
-            // force bitmap dirty to update palette
-            bm->SetIndex(bm->X0(),bm->Y0(),*bm->Data(bm->X0(),bm->Y0()));
-            // otherwise palette change wont be displayed on flush
-        }
-
-        Area++;
+    int x1,y1,x2,y2;
+    if (!bm->Dirty(x1,y1,x2,y2)) {
+        // force bitmap dirty to update palette
+        bm->SetIndex(bm->X0(),bm->Y0(),*bm->Data(bm->X0(),bm->Y0()));
+        // otherwise palette change wont be displayed on flush
     }
 }
 
@@ -152,18 +147,14 @@ void cDisplay::SetBackgroundColor(tColor c) {
 }
 
 void cDisplay::CleanDisplay() {
-    cBitmap *bm;
     enumTeletextColor bgc=(Boxed)?(ttcTransparent):(ttcBlack);
-    int Area=0;
-    while ((bm=osd->GetBitmap(Area))) {
-        // Draw rect in two steps to avoid zapping palette
-        bm->DrawRectangle(bm->X0(), bm->Y0()  , bm->X0()+bm->Width()-1, bm->Y0()               , bm->Color(GetColorIndex(bgc,Area)));
-        bm->DrawRectangle(bm->X0(), bm->Y0()+1, bm->X0()+bm->Width()-1, bm->Y0()+bm->Height()-1, bm->Color(GetColorIndex(bgc,Area)));
-        // Yes, this *is* stupid.
-        // Otherwise, ttcTransparent would shift into 0 index of palette,
-        // causing palette re-organization and flicker on page change
-        Area++; 
-    }
+
+    // Draw rect in two steps to avoid zapping palette
+    bm->DrawRectangle(bm->X0(), bm->Y0()  , bm->X0()+bm->Width()-1, bm->Y0()               , bm->Color(GetColorIndex(bgc)));
+    bm->DrawRectangle(bm->X0(), bm->Y0()+1, bm->X0()+bm->Width()-1, bm->Y0()+bm->Height()-1, bm->Color(GetColorIndex(bgc)));
+    // Yes, this *is* stupid.
+    // Otherwise, ttcTransparent would shift into 0 index of palette,
+    // causing palette re-organization and flicker on page change
     
     // repaint all
     Dirty=true;
@@ -171,7 +162,7 @@ void cDisplay::CleanDisplay() {
 }
 
 
-tColor cDisplay::GetColorRGB(enumTeletextColor ttc, int Area) {
+tColor cDisplay::GetColorRGB(enumTeletextColor ttc) {
     switch (ttc) {
     case ttcBlack:       return Background;
     case ttcRed:         return clrRed;
@@ -186,8 +177,8 @@ tColor cDisplay::GetColorRGB(enumTeletextColor ttc, int Area) {
     }
 }
 
-tColor cDisplay::GetColorRGBAlternate(enumTeletextColor ttc, int Area) {
-    return GetColorRGB(ttc,Area);
+tColor cDisplay::GetColorRGBAlternate(enumTeletextColor ttc) {
+    return GetColorRGB(ttc);
 }
 
 void cDisplay::RenderTeletextCode(unsigned char *PageCode) {
@@ -266,7 +257,6 @@ inline bool IsPureChar(unsigned int *bitmap) {
 void cDisplay::DrawChar(int x, int y, cTeletextChar c) {
     unsigned int buffer[10];
     unsigned int *charmap;
-    cBitmap *bm;
     
     // Get character face:
     charmap=GetFontChar(c,buffer);
@@ -298,59 +288,54 @@ void cDisplay::DrawChar(int x, int y, cTeletextChar c) {
     while (TopLeft.VirtX<box.XMin) TopLeft.IncPixelX(this);
     while (TopLeft.VirtY<box.YMin) TopLeft.IncPixelY(this);
 
-    // Move through all areas
-    int Area=0;
-    while ((bm=osd->GetBitmap(Area))) {
-        cVirtualCoordinate BMTopLeft=TopLeft;
+    cVirtualCoordinate BMTopLeft=TopLeft;
         
-        // Correct for bitmap offset
-        BMTopLeft.OsdX-=bm->X0();
-        BMTopLeft.OsdY-=bm->Y0();
+    // Correct for bitmap offset
+    BMTopLeft.OsdX-=bm->X0();
+    BMTopLeft.OsdY-=bm->Y0();
+
+    // Map color to local
+    int fg=GetColorIndex(ttfg);
+    int bg=GetColorIndex(ttbg);
+    if (ttfg!=ttbg && fg==bg && !IsPureChar(charmap)) {
+        // Color collision
+        bg=GetColorIndexAlternate(ttbg);
+    }
     
-        // Map color to local
-        int fg=GetColorIndex(ttfg,Area);
-        int bg=GetColorIndex(ttbg,Area);
-        if (ttfg!=ttbg && fg==bg && !IsPureChar(charmap)) {
-            // Color collision
-            bg=GetColorIndexAlternate(ttbg,Area);
-        }
-    
-        // Now draw the character. Start at the top left corner, and walk
-        // through all pixels on OSD. To speed up, keep one pointer to OSD pixel
-        // and one to virtual box coordinates, and move them together.
+    // Now draw the character. Start at the top left corner, and walk
+    // through all pixels on OSD. To speed up, keep one pointer to OSD pixel
+    // and one to virtual box coordinates, and move them together.
         
-        cVirtualCoordinate p=BMTopLeft;
-        while (p.VirtY<=box.YMax) {
-            // run through OSD lines
+    cVirtualCoordinate p=BMTopLeft;
+    while (p.VirtY<=box.YMax) {
+        // run through OSD lines
             
-            // OSD line in this bitmap?
-            if (0<=p.OsdY && p.OsdY<bm->Height()) {
-                // bits for this line
-                int bitline;
-                bitline=charmap[(p.VirtY-box.YMin)>>16];
+        // OSD line in this bitmap?
+        if (0<=p.OsdY && p.OsdY<bm->Height()) {
+            // bits for this line
+            int bitline;
+            bitline=charmap[(p.VirtY-box.YMin)>>16];
         
-                p.OsdX=BMTopLeft.OsdX;
-                p.VirtX=BMTopLeft.VirtX;
-                while (p.VirtX<=box.XMax) {
-                    // run through line pixels
+            p.OsdX=BMTopLeft.OsdX;
+            p.VirtX=BMTopLeft.VirtX;
+            while (p.VirtX<=box.XMax) {
+                // run through line pixels
                     
-                    // pixel insied this bitmap?
-                    if (0<=p.OsdX && p.OsdX<bm->Width()) {
-                        // pixel offset in bitline:
-                        int bit=(p.VirtX-box.XMin)>>16;
+                // pixel inside this bitmap?
+                if (0<=p.OsdX && p.OsdX<bm->Width()) {
+                    // pixel offset in bitline:
+                    int bit=(p.VirtX-box.XMin)>>16;
                         
-                        if (bitline&(0x8000>>bit)) {
-                            bm->SetIndex(p.OsdX,p.OsdY,fg);
-                        } else {
-                            bm->SetIndex(p.OsdX,p.OsdY,bg);
-                        }
+                    if (bitline&(0x8000>>bit)) {
+                        bm->SetIndex(p.OsdX,p.OsdY,fg);
+                    } else {
+                        bm->SetIndex(p.OsdX,p.OsdY,bg);
                     }
-                    p.IncPixelX(this);
                 }
+                p.IncPixelX(this);
             }
-            p.IncPixelY(this);
         }
-        Area++;
+        p.IncPixelY(this);
     }
 }
 
@@ -395,7 +380,6 @@ void cDisplay::DrawClock() {
 
 void cDisplay::DrawMessage(const char *txt) {
     const int border=5;
-    cBitmap *bm;
     
     if (!osd) return;
     
@@ -413,27 +397,20 @@ void cDisplay::DrawMessage(const char *txt) {
     int x=(Width-w)/2;
     int y=(Height-h)/2;
 
-    int Area=0;
-    while ((bm=osd->GetBitmap(Area))) {
-        // Walk through all OSD areas
-
-        // Get local color mapping      
-        tColor fg=bm->Color(GetColorIndex(ttcWhite,Area));
-        tColor bg=bm->Color(GetColorIndex(ttcBlack,Area));
-        if (fg==bg) bg=bm->Color(GetColorIndexAlternate(ttcBlack,Area));
+    // Get local color mapping
+    tColor fg=bm->Color(GetColorIndex(ttcWhite));
+    tColor bg=bm->Color(GetColorIndex(ttcBlack));
+    if (fg==bg) bg=bm->Color(GetColorIndexAlternate(ttcBlack));
         
-        // Draw framed box
-        bm->DrawRectangle(x         ,y         ,x+w-1       ,y+border-1  ,fg);
-        bm->DrawRectangle(x         ,y+h-border,x+w-1       ,y+h-1       ,fg);
-        bm->DrawRectangle(x         ,y         ,x+border-1  ,y+h-1       ,fg);
-        bm->DrawRectangle(x+w-border,y         ,x+w-1       ,y+h-1       ,fg);
-        bm->DrawRectangle(x+border  ,y+border  ,x+w-border-1,y+h-border-1,bg);
+    // Draw framed box
+    bm->DrawRectangle(x         ,y         ,x+w-1       ,y+border-1  ,fg);
+    bm->DrawRectangle(x         ,y+h-border,x+w-1       ,y+h-1       ,fg);
+    bm->DrawRectangle(x         ,y         ,x+border-1  ,y+h-1       ,fg);
+    bm->DrawRectangle(x+w-border,y         ,x+w-1       ,y+h-1       ,fg);
+    bm->DrawRectangle(x+border  ,y+border  ,x+w-border-1,y+h-border-1,bg);
 
-        // Draw text
-        bm->DrawText(x+2*border,y+2*border,txt, fg, bg, MessageFont);
-
-        Area++;
-    }
+    // Draw text
+    bm->DrawText(x+2*border,y+2*border,txt, fg, bg, MessageFont);
 
     // Remember box
     MessageW=w;

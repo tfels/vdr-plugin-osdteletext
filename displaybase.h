@@ -57,6 +57,9 @@ protected:
     cOsd *osd;
     // The osd object. If creation fails, may be NULL
     
+    cBitmap *bm;
+    // Bitmap used for drawing, formerly retrieved directly from OSD
+
     int ScaleX,ScaleY;
     int OffsetX,OffsetY;
     // Virtual coordinate system, see InitScaler
@@ -128,10 +131,10 @@ public:
     // Set the background color for black. Allows transparent black.
 
     // Color mapping interface.
-    virtual tColor GetColorRGB(enumTeletextColor ttc, int Area);
+    virtual tColor GetColorRGB(enumTeletextColor ttc);
     // Map a teletext color to an OSD color in #Area.
 
-    virtual tColor GetColorRGBAlternate(enumTeletextColor ttc, int Area);
+    virtual tColor GetColorRGBAlternate(enumTeletextColor ttc);
     // For color collision:
     // Map this teletext color to an OSD color in #Area, but dont
     // return same as GetColorRGB(). Used to solve conflicts if
@@ -139,20 +142,18 @@ public:
     // Defaults to 1:1 identity. Not needed if all colors actually 
     // supported by OSD.
 
-    int GetColorIndex(enumTeletextColor ttc, int Area) {
+    int GetColorIndex(enumTeletextColor ttc) {
         // Map this teletext color to an OSD color index in #Area.
         if (!osd) return 0;
-        cBitmap *bm=osd->GetBitmap(Area);
         if (!bm) return 0;
-        return bm->Index(GetColorRGB(ttc,Area));
+        return bm->Index(GetColorRGB(ttc));
     }
         
-    int GetColorIndexAlternate(enumTeletextColor ttc, int Area) {
+    int GetColorIndexAlternate(enumTeletextColor ttc) {
         // Map this teletext color to an OSD color index in #Area.
         if (!osd) return 0;
-        cBitmap *bm=osd->GetBitmap(Area);
         if (!bm) return 0;
-        return bm->Index(GetColorRGBAlternate(ttc,Area));
+        return bm->Index(GetColorRGBAlternate(ttc));
     }
 
         
@@ -188,6 +189,7 @@ protected:
         if (FlushLock>0) return;
         if (!osd) return;
         if (IsDirty()) DrawDisplay();
+        osd->DrawBitmap(0, 0, *bm);
         osd->Flush();
     }
 

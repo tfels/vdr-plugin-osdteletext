@@ -90,8 +90,8 @@ class cDisplay2BPP : public cDisplay {
 public:
     cDisplay2BPP(int x0, int y0, int width, int height);
 
-    virtual tColor GetColorRGB(enumTeletextColor ttc, int Area);
-    virtual tColor GetColorRGBAlternate(enumTeletextColor ttc, int Area);
+    virtual tColor GetColorRGB(enumTeletextColor ttc);
+    virtual tColor GetColorRGBAlternate(enumTeletextColor ttc);
 };
 
 
