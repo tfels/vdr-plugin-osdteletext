@@ -7,10 +7,10 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-  
+
 #include <map>
 #include <time.h>
-    
+
 #include <vdr/interface.h>
 #include <vdr/config.h>
 
@@ -30,7 +30,7 @@
 #define PSEUDO_HEX_TO_DECIMAL(x) ( (GET_HUNDREDS_DECIMAL(x))*256 + (GET_TENS_DECIMAL(x))*16 + (GET_ONES_DECIMAL(x)) )
 
 using namespace std;
-   
+
 int Stretch = true;
 typedef map<int,int> IntMap;
 IntMap channelPageMap;
@@ -73,35 +73,45 @@ void TeletextBrowser::Show(void) {
 }
 
 bool TeletextBrowser::CheckIsValidChannel(int number) {
-   return (Channels.GetByNumber(number) != 0);
+#if APIVERSNUM >= 20301
+    LOCK_CHANNELS_READ;
+    return (Channels->GetByNumber(number) != 0);
+#else
+    return (Channels.GetByNumber(number) != 0);
+#endif
 }
 
 void TeletextBrowser::ChannelSwitched(int ChannelNumber) {
+#if APIVERSNUM >= 20301
+   LOCK_CHANNELS_READ;
+   const cChannel *chan=Channels->GetByNumber(ChannelNumber);
+#else
    cChannel *chan=Channels.GetByNumber(ChannelNumber);
-   
+#endif
+
    if (!chan)
       return;
-      
+
    tChannelID chid=chan->GetChannelID();
    if (chid==channel || chid==tChannelID::InvalidID)
       return;
-      
+
    channel=chid;
-   
+
    //store page number of current channel
    IntMap::iterator it;
    channelPageMap[currentChannelNumber] = currentPage;
    currentChannelNumber=ChannelNumber;
-   
+
    currentPage=0x100;
    currentSubPage=0;
-      
+
    //see if last page number on this channel was stored
    it=channelPageMap.find(ChannelNumber);
    if (it != channelPageMap.end()) { //found
       currentPage=(*it).second;
    }
-   
+
    //on the one hand this must work in background mode, when the plugin is not active.
    //on the other hand, if active, the page should be shown.
    //so this self-Pointer.
@@ -114,7 +124,7 @@ void TeletextBrowser::ChannelSwitched(int ChannelNumber) {
 eOSState TeletextBrowser::ProcessKey(eKeys Key) {
    if (Key != kNone)
       lastActivity = time(NULL);
-   
+
    switch (Key) {
       case k1: SetNumber(1);break;
       case k2: SetNumber(2);break;
@@ -125,7 +135,7 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
       case k7: SetNumber(7);break;
       case k8: SetNumber(8);break;
       case k9: SetNumber(9);break;
-      case k0: 
+      case k0:
          //same behavior for 0 as VDR does it with channels
          if ((cursorPos==0)  && (!selectingChannel)) {
             //swap variables
@@ -139,7 +149,7 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
          } else
             SetNumber(0);
          break;
-      case kOk: 
+      case kOk:
          if (selectingChannel) {
             selectingChannel=false;
             Display::ClearMessage();
@@ -154,8 +164,8 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
                ShowPage();
             }
          }
-         break;        
-      case kBack: return osEnd; 
+         break;
+      case kBack: return osEnd;
       case kNone: //approx. every second
          //checking if page changed
          if ( pageFound && ttSetup.autoUpdatePage && cursorPos==0 && !selectingChannel && (PageCheckSum() != checkSum) ) {
@@ -201,7 +211,7 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
          ChangePageRelative(DirectionBackward);
          Display::ShowUpperHalf();
          ShowPage();
-         break;       
+         break;
       case kRight:
          if (selectingChannel) {
              selectingChannel=false;
@@ -214,7 +224,7 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
          ChangeSubPageRelative(DirectionForward);
          Display::ShowUpperHalf();
          ShowPage();
-         break;       
+         break;
       case kLeft:
          if (selectingChannel) {
              selectingChannel=false;
@@ -228,11 +238,11 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
          ChangeSubPageRelative(DirectionBackward);
          Display::ShowUpperHalf();
          ShowPage();
-         break; 
-         
-              
-      case kRed: 
-      case kGreen: 
+         break;
+
+
+      case kRed:
+      case kGreen:
       case kBlue:
       case kYellow:
       //case kUser1:case kUser2:case kUser3:case kUser4:case kUser5:
@@ -243,7 +253,7 @@ eOSState TeletextBrowser::ProcessKey(eKeys Key) {
             SetNumber(-3);
          }
          ExecuteAction(TranslateKey(Key));
-         break;             
+         break;
       default: break;
    }
    return osContinue;
@@ -256,7 +266,7 @@ void TeletextBrowser::ExecuteAction(eTeletextAction e) {
                    selectingChannel=false;
                    Display::ClearMessage();
                }
-               
+
                switch (Display::GetZoom()) {
                case cDisplay::Zoom_Off:
                   Display::SetZoom(cDisplay::Zoom_Upper);
@@ -268,14 +278,14 @@ void TeletextBrowser::ExecuteAction(eTeletextAction e) {
                   Display::SetZoom(cDisplay::Zoom_Off);
                   break;
                }
-               
+
                break;
             case HalfPage:
                if (selectingChannel) {
                    selectingChannel=false;
                    Display::ClearMessage();
                }
-                  
+
                switch (Display::mode) {
                case Display::HalfUpper:
                   Display::SetMode(Display::HalfLower);
@@ -322,7 +332,7 @@ void TeletextBrowser::ExecuteAction(eTeletextAction e) {
                   currentPage=pageNr;
                   cursorPos=0;
                   currentSubPage=0;
-                  
+
                   Display::ShowUpperHalf();
                   ShowPage();
                }
@@ -371,11 +381,11 @@ eTeletextAction TeletextBrowser::TranslateKey(eKeys Key) {
 void TeletextBrowser::SetNumber(int i) {
    //cursorPos means insertion after, 0<=cursorPos<=2
    if (selectingChannel) {
-      selectingChannelNumber = selectingChannelNumber*10+i;  
+      selectingChannelNumber = selectingChannelNumber*10+i;
       ShowAskForChannel();
       return;
    }
-   
+
    //i<0 means revert cursor position
    if (i<0) {
       for (;i<0;i++) {
@@ -395,7 +405,7 @@ void TeletextBrowser::SetNumber(int i) {
       return;
    }
 
-   
+
    static int tempPage;
    switch (cursorPos) {
    case 0:
@@ -505,19 +515,19 @@ bool TeletextBrowser::CheckFirstSubPage(int startWith) {
          return true;
       //currentSubPage++;
       currentSubPage=nextValidPageNumber(currentSubPage, DirectionForward);
-      
+
       if (currentSubPage > 0x99) currentSubPage=0;
       if (currentSubPage < 0) currentSubPage=0x99;
 
    } while (currentSubPage != oldsubpage);
-   
+
    return false;
 }
 
 bool TeletextBrowser::CheckPage()
 {
    StorageHandle fd;
-   
+
    if (!(fd=storage->openForReading(PageID(channel, currentPage, currentSubPage), false)) )
       return false;
 
@@ -577,12 +587,12 @@ bool TeletextBrowser::DecodePage() {
          storage->close(fd);
       }
    }
-   
+
    if ( (fd=storage->openForReading(PageID(channel, currentPage, currentSubPage), true)) )
    {
       storage->read(cache,sizeof cache,fd); // Read full page data
       storage->close(fd);
-      
+
       Display::HoldFlush();
       Display::ClearMessage();
       Display::RenderTeletextCode(cache);
@@ -610,9 +620,9 @@ bool TeletextBrowser::DecodePage() {
 int TeletextBrowser::PageCheckSum() {
    int retSum=0;
    StorageHandle fd;
-   
+
    CheckFirstSubPage(currentSubPage);
-   
+
    if ((fd=storage->openForReading(PageID(channel, currentPage, currentSubPage), false)) ) {
       uchar cache[960];
       storage->read(cache, 12, fd); //skip
@@ -643,13 +653,13 @@ TeletextSetup::TeletextSetup()
     //because there is no advantage, but a possible problem when VDR's value is change
     //after the plugin has stored its own value.
     inactivityTimeout(Setup.MinUserInactivity),
-    HideMainMenu(false)
+    HideMainMenu(false),
+    txtFontName("FreeMono:Standard")
 {
    //init key bindings
    for (int i=0;i<10;i++)
       mapKeyToAction[0]=(eTeletextAction)0;
    mapKeyToAction[3]=Zoom;
-   mapKeyToAction[2]=HalfPage;   
+   mapKeyToAction[2]=HalfPage;
    mapKeyToAction[0]=SwitchChannel;
 }
-
